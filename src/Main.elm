@@ -263,29 +263,31 @@ viewTeam team role =
 viewMatch : Match -> Html Msg
 viewMatch match =
     let
-        ( homeScore, guestScore ) =
+        ( homeScore, guestScore, scoreColor ) =
             case match.score of
                 Just ( a, b ) ->
-                    ( String.fromInt a, String.fromInt b )
+                    ( String.fromInt a
+                    , String.fromInt b
+                    , if match.finished then
+                        "black"
+
+                      else
+                        "red"
+                    )
 
                 Nothing ->
-                    ( "-", "-" )
-
-        finishedText =
-            if match.finished then
-                text "Finished"
-
-            else
-                text "Not finished"
+                    ( "-", "-", "black" )
     in
     Html.tr []
         (viewTeam match.home Home
-            ++ [ Html.td [ textAlign Right ] [ text homeScore ]
-               , Html.td [ textAlign Center ] [ text ":" ]
-               , Html.td [ textAlign Left ] [ text guestScore ]
+            ++ [ Html.td [ textAlign Right ]
+                    [ div [ style "color" scoreColor ] [ text homeScore ] ]
+               , Html.td [ textAlign Center ]
+                    [ div [ style "color" scoreColor ] [ text ":" ] ]
+               , Html.td [ textAlign Left ]
+                    [ div [ style "color" scoreColor ] [ text guestScore ] ]
                ]
             ++ viewTeam match.guest Guest
-            ++ [ Html.td [ textAlign Right ] [ finishedText ] ]
         )
 
 
