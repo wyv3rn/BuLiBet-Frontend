@@ -87,21 +87,21 @@ type alias MatchDay =
 
 
 type FetchStatus
-    = Fetching Int
+    = Idle
+    | Fetching Int
     | FetchFailed String
+    | FetchDone MatchDay
 
 
-type
-    Model
-    -- first String is input, second is an error msg to display
-    = QueryDay ( String, String )
-    | FetchDay FetchStatus
-    | ShowDay MatchDay
+type alias Model =
+    { selectedDay : Maybe Int
+    , status : FetchStatus
+    }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( QueryDay ( "", "" ), Cmd.none )
+    ( Model Nothing Idle, Cmd.none )
 
 
 
@@ -109,27 +109,32 @@ init _ =
 
 
 type Msg
-    = DayInput String
-    | SubmitDay String
+    = DaySelected Int
     | GotMatchDay (Result Http.Error MatchDay)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        DayInput d ->
-            ( QueryDay ( d, "" ), Cmd.none )
+        DaySelected day ->
+            case model.selectedDay of
+                Just selected ->
+                    if day == selected then
+                        ( model, Cmd.none )
 
-        SubmitDay inputStr ->
-            updateSubmitDay inputStr
+                    else
+                        selectDay model day
+
+                Nothing ->
+                    selectDay model day
 
         GotMatchDay result ->
             case result of
                 Ok matches ->
-                    ( ShowDay matches, Cmd.none )
+                    ( { model | status = FetchDone matches }, Cmd.none )
 
                 Err e ->
-                    ( FetchDay (FetchFailed (fetchErrorMsg e)), Cmd.none )
+                    ( Model Nothing (FetchFailed (fetchErrorMsg e)), Cmd.none )
 
 
 fetchErrorMsg : Http.Error -> String
@@ -151,29 +156,16 @@ fetchErrorMsg e =
             "Bad Body: " ++ b
 
 
-updateSubmitDay : String -> ( Model, Cmd Msg )
-updateSubmitDay inputStr =
-    case String.toInt inputStr of
-        Just day ->
-            if day < 1 || day > 34 then
-                ( QueryDay ( inputStr, "There are only match days 1 to 34!" )
-                , Cmd.none
-                )
-
-            else
-                ( FetchDay (Fetching day)
-                , Http.get
-                    { url =
-                        "https://www.openligadb.de/api/getmatchdata/bl1/2019/"
-                            ++ String.fromInt day
-                    , expect = Http.expectJson GotMatchDay matchDayDecoder
-                    }
-                )
-
-        Nothing ->
-            ( QueryDay ( inputStr, "Matchday has to be an integer!" )
-            , Cmd.none
-            )
+selectDay : Model -> Int -> ( Model, Cmd Msg )
+selectDay model day =
+    ( { model | selectedDay = Just day, status = Fetching day }
+    , Http.get
+        { url =
+            "https://www.openligadb.de/api/getmatchdata/bl1/2019/"
+                ++ String.fromInt day
+        , expect = Http.expectJson GotMatchDay matchDayDecoder
+        }
+    )
 
 
 
@@ -191,57 +183,72 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
-    case model of
-        QueryDay ( str, error ) ->
-            div []
-                [ text "Which day are you interested in? "
-                , input
-                    [ type_ "text"
-                    , placeholder ""
-                    , value str
-                    , onInput DayInput
-                    ]
-                    []
-                , button [ onClick (SubmitDay str) ] [ text "Fetch!" ]
-                , div [ style "color" "red" ] [ text error ]
-                ]
+    let
+        viewSiteDay =
+            viewSite model.selectedDay
+    in
+    case model.status of
+        Idle ->
+            viewSiteDay (Html.text "Select a matchday below.")
 
-        FetchDay status ->
-            case status of
-                Fetching day ->
-                    text ("Fetching day " ++ String.fromInt day ++ " ...")
+        Fetching day ->
+            viewSiteDay (text ("Fetching day " ++ String.fromInt day ++ " ..."))
 
-                FetchFailed reason ->
-                    text
+        FetchFailed reason ->
+            viewSiteDay
+                (div [ style "color" "red" ]
+                    [ text
                         ("Fetching failed, reason: "
                             ++ reason
                         )
+                    ]
+                )
 
-        ShowDay matchDay ->
-            viewMatchDay matchDay
-
-
-type Alignment
-    = Left
-    | Center
-    | Right
+        FetchDone matchDay ->
+            viewSiteDay (viewMatchDay matchDay)
 
 
-textAlign : Alignment -> Html.Attribute msg
-textAlign a =
+viewSite : Maybe Int -> Html Msg -> Html Msg
+viewSite day content =
+    Html.div []
+        [ Html.p [] [ content ]
+        , Html.hr [] []
+        , Html.p [] [ viewSelection day ]
+        ]
+
+
+viewSelection : Maybe Int -> Html Msg
+viewSelection day =
     let
-        partial =
-            style "text-align"
+        selectedDay =
+            case day of
+                Just selected ->
+                    selected
+
+                Nothing ->
+                    -1
+
+        dayList =
+            List.range 1 34
+
+        buttonList =
+            List.map (createDayButton selectedDay) dayList
     in
-    case a of
-        Left ->
-            partial "left"
+    Html.div [] buttonList
 
-        Center ->
-            partial "center"
 
-        Right ->
-            partial "right"
+createDayButton : Int -> Int -> Html Msg
+createDayButton selectedDay day =
+    let
+        bg =
+            if selectedDay == day then
+                "#268bd2"
+
+            else
+                "white"
+    in
+    Html.button [ style "background-color" bg, onClick (DaySelected day) ]
+        [ text (String.fromInt day) ]
 
 
 viewTeam : Team -> TeamRole -> List (Html Msg)
@@ -354,3 +361,30 @@ teamDecoder =
 teamNameDecoder : Decoder String
 teamNameDecoder =
     map shortenTeamName (field "ShortName" string)
+
+
+
+-- HELPER
+
+
+type Alignment
+    = Left
+    | Center
+    | Right
+
+
+textAlign : Alignment -> Html.Attribute msg
+textAlign a =
+    let
+        partial =
+            style "text-align"
+    in
+    case a of
+        Left ->
+            partial "left"
+
+        Center ->
+            partial "center"
+
+        Right ->
+            partial "right"
