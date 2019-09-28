@@ -117,16 +117,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         DaySelected day ->
-            case model.selectedDay of
-                Just selected ->
-                    if day == selected then
-                        ( model, Cmd.none )
-
-                    else
-                        selectDay model day
-
-                Nothing ->
-                    selectDay model day
+            selectDay model day
 
         GotMatchDay result ->
             case result of
