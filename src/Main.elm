@@ -368,7 +368,7 @@ viewMatch idx match =
     Html.tr []
         ([ viewUpBtn idx ]
             ++ viewTeam match.home Home
-            ++ viewScore match.score scoreColor
+            ++ [ Html.td [] [ viewScore scoreColor match.score ] ]
             ++ viewTeam match.guest Guest
             ++ viewBet idx match.bet
         )
@@ -381,8 +381,13 @@ viewUpBtn matchIdx =
         [ button [ onClick (MatchUp matchIdx) ] [ text "⇧" ] ]
 
 
-viewScore : Score -> String -> List (Html Msg)
-viewScore score color =
+viewScore : String -> Score -> Html Msg
+viewScore =
+    viewScoreDelim "\u{2009}"
+
+
+viewScoreDelim : String -> String -> Score -> Html Msg
+viewScoreDelim delim color score =
     let
         ( homeScore, guestScore ) =
             case score of
@@ -394,13 +399,9 @@ viewScore score color =
                 Nothing ->
                     ( "-", "-" )
     in
-    [ Html.td [ textAlign Right ]
-        [ div [ style "color" color ] [ text homeScore ] ]
-    , Html.td [ textAlign Center ]
-        [ div [ style "color" color ] [ text ":" ] ]
-    , Html.td [ textAlign Left ]
-        [ div [ style "color" color ] [ text guestScore ] ]
-    ]
+    Html.span
+        [ style "color" color ]
+        [ text (homeScore ++ delim ++ ":" ++ delim ++ guestScore) ]
 
 
 viewBet : Int -> Score -> List (Html Msg)
@@ -409,7 +410,7 @@ viewBet matchIdx bet =
     , viewBetBtn matchIdx Home 1
     , viewBetBtn matchIdx Home -1
     ]
-        ++ viewScore bet "black"
+        ++ [ Html.td [] [ viewScore "black" bet ] ]
         ++ [ viewBetBtn matchIdx Guest -1
            , viewBetBtn matchIdx Guest 1
            , viewBetBtn matchIdx Guest 2
@@ -451,8 +452,13 @@ viewSubmittedMatchDay matchDay =
 
 viewSubmittedMatch : Match -> Html Msg
 viewSubmittedMatch match =
-    -- TODO
-    Html.tr [] [ text "TODO" ]
+    Html.tr []
+        [ Html.div []
+            ([ text (match.home.name ++ " ") ]
+                ++ [ viewScoreDelim "" "black" match.bet ]
+                ++ [ text (" " ++ match.guest.name) ]
+            )
+        ]
 
 
 
