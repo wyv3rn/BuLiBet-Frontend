@@ -21,6 +21,7 @@ import Json.Decode
         , map2
         , map3
         , map4
+        , map5
         , maybe
         , string
         , succeed
@@ -78,12 +79,65 @@ type alias Score =
     Maybe ( Int, Int )
 
 
+updateScore : Int -> TeamRole -> Score -> Score
+updateScore inc role score =
+    case score of
+        Just ( h, g ) ->
+            case role of
+                Home ->
+                    Just ( max (h + inc) 0, g )
+
+                Guest ->
+                    Just ( h, max (g + inc) 0 )
+
+        Nothing ->
+            let
+                val =
+                    max inc 0
+            in
+            case role of
+                Home ->
+                    Just ( val, 0 )
+
+                Guest ->
+                    Just ( 0, val )
+
+
 type alias Match =
-    { home : Team, guest : Team, score : Score, finished : Bool }
+    { home : Team, guest : Team, score : Score, bet : Score, finished : Bool }
 
 
 type alias MatchDay =
     List Match
+
+
+moveMatchUp : Int -> MatchDay -> MatchDay
+moveMatchUp idx matchDay =
+    matchDay
+        |> List.indexedMap Tuple.pair
+        |> List.sortBy
+            (\( i, e ) ->
+                if i == idx then
+                    toFloat i - 1.1
+
+                else
+                    toFloat i
+            )
+        |> List.unzip
+        |> Tuple.second
+
+
+updateBet : Int -> TeamRole -> Int -> MatchDay -> MatchDay
+updateBet matchIdx role inc matchDay =
+    matchDay
+        |> List.indexedMap
+            (\i match ->
+                if i == matchIdx then
+                    { match | bet = updateScore inc role match.bet }
+
+                else
+                    match
+            )
 
 
 type FetchStatus
@@ -91,6 +145,7 @@ type FetchStatus
     | Fetching Int
     | FetchFailed String
     | FetchDone MatchDay
+    | Submitted MatchDay
 
 
 type alias Model =
@@ -111,6 +166,9 @@ init _ =
 type Msg
     = DaySelected Int
     | GotMatchDay (Result Http.Error MatchDay)
+    | MatchUp Int
+    | UpdateBet Int TeamRole Int
+    | SubmitBet
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -126,6 +184,37 @@ update msg model =
 
                 Err e ->
                     ( Model Nothing (FetchFailed (fetchErrorMsg e)), Cmd.none )
+
+        MatchUp idx ->
+            case model.status of
+                FetchDone matchDay ->
+                    ( { model | status = FetchDone (moveMatchUp idx matchDay) }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        UpdateBet matchIdx role inc ->
+            case model.status of
+                FetchDone matchDay ->
+                    ( { model
+                        | status =
+                            FetchDone (updateBet matchIdx role inc matchDay)
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        SubmitBet ->
+            case model.status of
+                FetchDone matchDay ->
+                    ( { model | status = Submitted matchDay }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
 
 
 fetchErrorMsg : Http.Error -> String
@@ -198,6 +287,9 @@ view model =
         FetchDone matchDay ->
             viewSiteDay (viewMatchDay matchDay)
 
+        Submitted matchDay ->
+            viewSiteDay (viewSubmittedMatchDay matchDay)
+
 
 viewSite : Maybe Int -> Html Msg -> Html Msg
 viewSite day content =
@@ -258,40 +350,109 @@ viewTeam team role =
             ]
 
 
-viewMatch : Match -> Html Msg
-viewMatch match =
+viewMatch : Int -> Match -> Html Msg
+viewMatch idx match =
     let
-        ( homeScore, guestScore, scoreColor ) =
+        scoreColor =
             case match.score of
+                Just _ ->
+                    if match.finished then
+                        "black"
+
+                    else
+                        "red"
+
+                Nothing ->
+                    "black"
+    in
+    Html.tr []
+        ([ viewUpBtn idx ]
+            ++ viewTeam match.home Home
+            ++ viewScore match.score scoreColor
+            ++ viewTeam match.guest Guest
+            ++ viewBet idx match.bet
+        )
+
+
+viewUpBtn : Int -> Html Msg
+viewUpBtn matchIdx =
+    Html.td
+        [ textAlign Center ]
+        [ button [ onClick (MatchUp matchIdx) ] [ text "⇧" ] ]
+
+
+viewScore : Score -> String -> List (Html Msg)
+viewScore score color =
+    let
+        ( homeScore, guestScore ) =
+            case score of
                 Just ( a, b ) ->
                     ( String.fromInt a
                     , String.fromInt b
-                    , if match.finished then
-                        "black"
-
-                      else
-                        "red"
                     )
 
                 Nothing ->
-                    ( "-", "-", "black" )
+                    ( "-", "-" )
     in
-    Html.tr []
-        (viewTeam match.home Home
-            ++ [ Html.td [ textAlign Right ]
-                    [ div [ style "color" scoreColor ] [ text homeScore ] ]
-               , Html.td [ textAlign Center ]
-                    [ div [ style "color" scoreColor ] [ text ":" ] ]
-               , Html.td [ textAlign Left ]
-                    [ div [ style "color" scoreColor ] [ text guestScore ] ]
-               ]
-            ++ viewTeam match.guest Guest
-        )
+    [ Html.td [ textAlign Right ]
+        [ div [ style "color" color ] [ text homeScore ] ]
+    , Html.td [ textAlign Center ]
+        [ div [ style "color" color ] [ text ":" ] ]
+    , Html.td [ textAlign Left ]
+        [ div [ style "color" color ] [ text guestScore ] ]
+    ]
+
+
+viewBet : Int -> Score -> List (Html Msg)
+viewBet matchIdx bet =
+    [ viewBetBtn matchIdx Home 2
+    , viewBetBtn matchIdx Home 1
+    , viewBetBtn matchIdx Home -1
+    ]
+        ++ viewScore bet "black"
+        ++ [ viewBetBtn matchIdx Guest -1
+           , viewBetBtn matchIdx Guest 1
+           , viewBetBtn matchIdx Guest 2
+           ]
+
+
+viewBetBtn : Int -> TeamRole -> Int -> Html Msg
+viewBetBtn matchIdx role inc =
+    let
+        sign =
+            if inc >= 0 then
+                "+"
+
+            else
+                ""
+    in
+    Html.td
+        [ textAlign Center ]
+        [ button
+            [ onClick (UpdateBet matchIdx role inc)
+            ]
+            [ text (sign ++ String.fromInt inc) ]
+        ]
 
 
 viewMatchDay : MatchDay -> Html Msg
 viewMatchDay matchDay =
-    Html.table [] (List.map viewMatch matchDay)
+    Html.div
+        []
+        [ Html.table [] (List.indexedMap viewMatch matchDay)
+        , Html.button [ onClick SubmitBet ] [ text "Submit!" ]
+        ]
+
+
+viewSubmittedMatchDay : MatchDay -> Html Msg
+viewSubmittedMatchDay matchDay =
+    Html.table [] (List.map viewSubmittedMatch matchDay)
+
+
+viewSubmittedMatch : Match -> Html Msg
+viewSubmittedMatch match =
+    -- TODO
+    Html.tr [] [ text "TODO" ]
 
 
 
@@ -301,11 +462,12 @@ viewMatchDay matchDay =
 matchDayDecoder : Decoder MatchDay
 matchDayDecoder =
     list
-        (map4
+        (map5
             Match
             (field "Team1" teamDecoder)
             (field "Team2" teamDecoder)
             resultListDecoder
+            (succeed Nothing)
             (field "MatchIsFinished" bool)
         )
 
