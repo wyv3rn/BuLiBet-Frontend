@@ -3,6 +3,7 @@ module Main exposing (main)
 -- TODO do not clutter global namespace ...
 
 import Browser
+import Dict exposing (Dict)
 import Html exposing (Html, button, div, img, input, text)
 import Html.Attributes exposing (placeholder, src, style, type_, value)
 import Html.Events exposing (onClick, onInput)
@@ -22,6 +23,7 @@ import Json.Decode
         , map3
         , map4
         , map5
+        , map6
         , maybe
         , string
         , succeed
@@ -104,7 +106,13 @@ updateScore inc role score =
 
 
 type alias Match =
-    { home : Team, guest : Team, score : Score, bet : Score, finished : Bool }
+    { day : Int
+    , home : Team
+    , guest : Team
+    , score : Score
+    , bet : Score
+    , finished : Bool
+    }
 
 
 type alias MatchDay =
@@ -140,16 +148,95 @@ updateBet matchIdx role inc matchDay =
             )
 
 
+type TeamResult
+    = Win
+    | Tie
+    | Loss
+
+
+type alias FullTeamResult =
+    { teamName : String
+    , day : Int
+    , goals : Int
+    , goalsAgainst : Int
+    , result : TeamResult
+    }
+
+
+type alias ResultDict =
+    Dict String (List FullTeamResult)
+
+
+type alias TeamResultSummary =
+    { teamName : String
+    , matches : Int
+    , goals : Int
+    , goalsAgainst : Int
+    , points : Int
+    }
+
+
+type alias Table =
+    List TeamResultSummary
+
+
+generateTable : ResultDict -> Table
+generateTable dict =
+    let
+        unsorted =
+            Dict.foldl foldTable [] dict
+    in
+    -- TODO there are more rules for sorting
+    List.sortBy (\summary -> -1 * summary.points) unsorted
+
+
+foldTable : String -> List FullTeamResult -> Table -> Table
+foldTable teamName results table =
+    let
+        teamSummary =
+            List.foldl foldTeamResults (TeamResultSummary teamName 0 0 0 0) results
+    in
+    teamSummary :: table
+
+
+foldTeamResults : FullTeamResult -> TeamResultSummary -> TeamResultSummary
+foldTeamResults result summary =
+    let
+        points =
+            case result.result of
+                Win ->
+                    3
+
+                Tie ->
+                    1
+
+                Loss ->
+                    0
+    in
+    { summary
+        | matches = summary.matches + 1
+        , goals = summary.goals + result.goals
+        , goalsAgainst = summary.goalsAgainst + result.goalsAgainst
+        , points = summary.points + points
+    }
+
+
+type Selection
+    = Day Int
+    | Table
+
+
 type FetchStatus
     = Idle
-    | Fetching Int
+    | Fetching Selection
     | FetchFailed String
-    | FetchDone MatchDay
+    | FetchedDay MatchDay
+    | FetchedAll (List Match)
     | Submitted MatchDay
 
 
 type alias Model =
-    { selectedDay : Maybe Int
+    { selection : Maybe Selection
     , status : FetchStatus
     }
 
@@ -165,7 +252,9 @@ init _ =
 
 type Msg
     = DaySelected Int
+    | TableSelected
     | GotMatchDay (Result Http.Error MatchDay)
+    | GotAllMatches (Result Http.Error (List Match))
     | MatchUp Int
     | UpdateBet Int TeamRole Int
     | SubmitBet
@@ -177,18 +266,29 @@ update msg model =
         DaySelected day ->
             selectDay model day
 
+        TableSelected ->
+            selectTable model
+
         GotMatchDay result ->
             case result of
                 Ok matches ->
-                    ( { model | status = FetchDone matches }, Cmd.none )
+                    ( { model | status = FetchedDay matches }, Cmd.none )
+
+                Err e ->
+                    ( Model Nothing (FetchFailed (fetchErrorMsg e)), Cmd.none )
+
+        GotAllMatches result ->
+            case result of
+                Ok matches ->
+                    ( { model | status = FetchedAll matches }, Cmd.none )
 
                 Err e ->
                     ( Model Nothing (FetchFailed (fetchErrorMsg e)), Cmd.none )
 
         MatchUp idx ->
             case model.status of
-                FetchDone matchDay ->
-                    ( { model | status = FetchDone (moveMatchUp idx matchDay) }
+                FetchedDay matchDay ->
+                    ( { model | status = FetchedDay (moveMatchUp idx matchDay) }
                     , Cmd.none
                     )
 
@@ -197,10 +297,10 @@ update msg model =
 
         UpdateBet matchIdx role inc ->
             case model.status of
-                FetchDone matchDay ->
+                FetchedDay matchDay ->
                     ( { model
                         | status =
-                            FetchDone (updateBet matchIdx role inc matchDay)
+                            FetchedDay (updateBet matchIdx role inc matchDay)
                       }
                     , Cmd.none
                     )
@@ -210,7 +310,7 @@ update msg model =
 
         SubmitBet ->
             case model.status of
-                FetchDone matchDay ->
+                FetchedDay matchDay ->
                     ( { model | status = Submitted matchDay }, Cmd.none )
 
                 _ ->
@@ -237,13 +337,27 @@ fetchErrorMsg e =
 
 
 selectDay : Model -> Int -> ( Model, Cmd Msg )
-selectDay model day =
-    ( { model | selectedDay = Just day, status = Fetching day }
+selectDay model d =
+    let
+        day =
+            Day d
+    in
+    ( { model | selection = Just day, status = Fetching day }
     , Http.get
         { url =
-            "https://www.openligadb.de/api/getmatchdata/bl1/2019/"
-                ++ String.fromInt day
-        , expect = Http.expectJson GotMatchDay matchDayDecoder
+            openligaUrl
+                ++ String.fromInt d
+        , expect = Http.expectJson GotMatchDay (list matchDecoder)
+        }
+    )
+
+
+selectTable model =
+    ( { model | selection = Just Table, status = Fetching Table }
+    , Http.get
+        { url =
+            openligaUrl
+        , expect = Http.expectJson GotAllMatches (list matchDecoder)
         }
     )
 
@@ -264,18 +378,23 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     let
-        viewSiteDay =
-            viewSite model.selectedDay
+        viewSel =
+            viewSite model.selection
     in
     case model.status of
         Idle ->
-            viewSiteDay (Html.text "Select a matchday below.")
+            viewSel (Html.text "Select a matchday or other action below.")
 
-        Fetching day ->
-            viewSiteDay (text ("Fetching day " ++ String.fromInt day ++ " ..."))
+        Fetching selection ->
+            case selection of
+                Day d ->
+                    viewSel (text ("Fetching day " ++ String.fromInt d ++ " ..."))
+
+                Table ->
+                    viewSel (text "Fetching all match days for generating table ...")
 
         FetchFailed reason ->
-            viewSiteDay
+            viewSel
                 (div [ style "color" "red" ]
                     [ text
                         ("Fetching failed, reason: "
@@ -284,54 +403,74 @@ view model =
                     ]
                 )
 
-        FetchDone matchDay ->
-            viewSiteDay (viewMatchDay matchDay)
+        FetchedDay matchDay ->
+            viewSel (viewMatchDay matchDay)
 
         Submitted matchDay ->
-            viewSiteDay (viewSubmittedMatchDay matchDay)
+            viewSel (viewSubmittedMatchDay matchDay)
+
+        FetchedAll matches ->
+            viewSel (viewTable matches)
 
 
-viewSite : Maybe Int -> Html Msg -> Html Msg
-viewSite day content =
+viewSite : Maybe Selection -> Html Msg -> Html Msg
+viewSite selection content =
     Html.div []
         [ Html.p [] [ content ]
         , Html.hr [] []
-        , Html.p [] [ viewSelection day ]
+        , Html.p [] [ viewButtons selection ]
         ]
 
 
-viewSelection : Maybe Int -> Html Msg
-viewSelection day =
+viewButtons : Maybe Selection -> Html Msg
+viewButtons selection =
     let
-        selectedDay =
-            case day of
-                Just selected ->
-                    selected
+        dayLabels =
+            List.map String.fromInt (List.range 1 34)
 
-                Nothing ->
-                    -1
+        menuLabels =
+            dayLabels ++ [ "Table" ]
 
-        dayList =
-            List.range 1 34
-
-        buttonList =
-            List.map (createDayButton selectedDay) dayList
+        buttons =
+            List.map (createButton selection) menuLabels
     in
-    Html.div [] buttonList
+    Html.div [] buttons
 
 
-createDayButton : Int -> Int -> Html Msg
-createDayButton selectedDay day =
+createButton : Maybe Selection -> String -> Html Msg
+createButton selection label =
     let
+        selectedBg =
+            "#268bd2"
+
         bg =
-            if selectedDay == day then
-                "#268bd2"
+            case selection of
+                Nothing ->
+                    "white"
+
+                Just (Day d) ->
+                    if label == String.fromInt d then
+                        selectedBg
+
+                    else
+                        "white"
+
+                Just Table ->
+                    if label == "Table" then
+                        selectedBg
+
+                    else
+                        "white"
+
+        action =
+            if label == "Table" then
+                onClick TableSelected
 
             else
-                "white"
+                onClick (DaySelected (Maybe.withDefault -1 (String.toInt label)))
     in
-    Html.button [ style "background-color" bg, onClick (DaySelected day) ]
-        [ text (String.fromInt day) ]
+    Html.button [ style "background-color" bg, action ]
+        [ text label ]
 
 
 viewTeam : Team -> TeamRole -> List (Html Msg)
@@ -371,6 +510,7 @@ viewMatch idx match =
             ++ [ Html.td [] [ viewScore scoreColor match.score ] ]
             ++ viewTeam match.guest Guest
             ++ viewBet idx match.bet
+            ++ [ text ("Debug: Day " ++ String.fromInt match.day) ]
         )
 
 
@@ -461,21 +601,95 @@ viewSubmittedMatch match =
         ]
 
 
+viewTable : List Match -> Html Msg
+viewTable matches =
+    let
+        resultDict =
+            List.foldl insertMatchToResultDict Dict.empty matches
+
+        table =
+            generateTable resultDict
+    in
+    Html.div
+        []
+        [ Html.table [] (List.indexedMap viewTableRow table)
+        ]
+
+
+viewTableRow : Int -> TeamResultSummary -> Html Msg
+viewTableRow idx summary =
+    Html.tr []
+        [ Html.td [] [ text (String.fromInt (idx + 1)) ]
+        , Html.td [] [ text summary.teamName ]
+        , Html.td [] [ text (String.fromInt summary.points) ]
+        , Html.td [] [ text (String.fromInt summary.goals ++ ":" ++ String.fromInt summary.goalsAgainst) ]
+        ]
+
+
+insertMatchToResultDict : Match -> ResultDict -> ResultDict
+insertMatchToResultDict match dict =
+    let
+        dictWithHome =
+            insertMatchToResultDictRole Home match dict
+    in
+    insertMatchToResultDictRole Guest match dictWithHome
+
+
+insertMatchToResultDictRole : TeamRole -> Match -> ResultDict -> ResultDict
+insertMatchToResultDictRole role match dict =
+    case match.score of
+        Nothing ->
+            dict
+
+        Just ( hg, gg ) ->
+            let
+                ( partial, goals, goalsAgainst ) =
+                    case role of
+                        Home ->
+                            ( FullTeamResult match.home.name match.day, hg, gg )
+
+                        Guest ->
+                            ( FullTeamResult match.guest.name match.day, gg, hg )
+
+                result =
+                    if goals > goalsAgainst then
+                        partial goals goalsAgainst Win
+
+                    else if goals == goalsAgainst then
+                        partial goals goalsAgainst Tie
+
+                    else
+                        partial goals goalsAgainst Loss
+
+                -- TODO better "insertWith"/"update"?
+                before =
+                    Dict.get result.teamName dict
+
+                ( tmpDict, toInsert ) =
+                    case before of
+                        Nothing ->
+                            ( dict, [ result ] )
+
+                        Just resList ->
+                            ( Dict.remove result.teamName dict, result :: resList )
+            in
+            Dict.insert result.teamName toInsert tmpDict
+
+
 
 -- JSON decoding
 
 
-matchDayDecoder : Decoder MatchDay
-matchDayDecoder =
-    list
-        (map5
-            Match
-            (field "Team1" teamDecoder)
-            (field "Team2" teamDecoder)
-            resultListDecoder
-            (succeed Nothing)
-            (field "MatchIsFinished" bool)
-        )
+matchDecoder : Decoder Match
+matchDecoder =
+    map6
+        Match
+        (field "Group" (field "GroupOrderID" int))
+        (field "Team1" teamDecoder)
+        (field "Team2" teamDecoder)
+        resultListDecoder
+        (succeed Nothing)
+        (field "MatchIsFinished" bool)
 
 
 scoreFromInts : Int -> Int -> Score
@@ -524,6 +738,10 @@ teamNameDecoder =
 
 
 -- HELPER
+
+
+openligaUrl =
+    "https://www.openligadb.de/api/getmatchdata/bl1/2019/"
 
 
 type Alignment
