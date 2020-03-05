@@ -623,6 +623,7 @@ viewTableRow idx summary =
         , Html.td [] [ text summary.teamName ]
         , Html.td [] [ text (String.fromInt summary.points) ]
         , Html.td [] [ text (String.fromInt summary.goals ++ ":" ++ String.fromInt summary.goalsAgainst) ]
+        , Html.td [] [ text ("(" ++ String.fromInt summary.matches ++ ")") ]
         ]
 
 
