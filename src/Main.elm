@@ -170,10 +170,18 @@ type alias ResultDict =
 type alias TeamResultSummary =
     { teamName : String
     , matches : Int
+    , wins : Int
+    , ties : Int
+    , losses : Int
     , goals : Int
     , goalsAgainst : Int
     , points : Int
     }
+
+
+emptyTeamResultSummary : String -> TeamResultSummary
+emptyTeamResultSummary teamName =
+    TeamResultSummary teamName 0 0 0 0 0 0 0
 
 
 type alias Table =
@@ -194,7 +202,7 @@ foldTable : String -> List FullTeamResult -> Table -> Table
 foldTable teamName results table =
     let
         teamSummary =
-            List.foldl foldTeamResults (TeamResultSummary teamName 0 0 0 0) results
+            List.foldl foldTeamResults (emptyTeamResultSummary teamName) results
     in
     teamSummary :: table
 
@@ -202,23 +210,31 @@ foldTable teamName results table =
 foldTeamResults : FullTeamResult -> TeamResultSummary -> TeamResultSummary
 foldTeamResults result summary =
     let
-        points =
+        ( p, ( w, t, l ) ) =
             case result.result of
                 Win ->
-                    3
+                    ( 3, ( 1, 0, 0 ) )
 
                 Tie ->
-                    1
+                    ( 1, ( 0, 1, 0 ) )
 
                 Loss ->
-                    0
+                    ( 0, ( 0, 0, 1 ) )
     in
-    { summary
-        | matches = summary.matches + 1
-        , goals = summary.goals + result.goals
-        , goalsAgainst = summary.goalsAgainst + result.goalsAgainst
-        , points = summary.points + points
-    }
+    -- TODO filter
+    if result.day >= 0 then
+        { summary
+            | matches = summary.matches + 1
+            , goals = summary.goals + result.goals
+            , goalsAgainst = summary.goalsAgainst + result.goalsAgainst
+            , points = summary.points + p
+            , wins = summary.wins + w
+            , ties = summary.ties + t
+            , losses = summary.losses + l
+        }
+
+    else
+        summary
 
 
 type Selection
@@ -618,11 +634,27 @@ viewTable matches =
 
 viewTableRow : Int -> TeamResultSummary -> Html Msg
 viewTableRow idx summary =
+    let
+        ratio =
+            toFloat summary.goals / toFloat summary.goalsAgainst
+
+        -- TODO formatting
+        ratioTxt =
+            if summary.goals > summary.goalsAgainst then
+                String.fromFloat ratio ++ ":1"
+
+            else
+                "1:" ++ String.fromFloat (1.0 / ratio)
+    in
     Html.tr []
         [ Html.td [] [ text (String.fromInt (idx + 1)) ]
         , Html.td [] [ text summary.teamName ]
         , Html.td [] [ text (String.fromInt summary.points) ]
+        , Html.td [] [ text (String.fromInt summary.wins) ]
+        , Html.td [] [ text (String.fromInt summary.ties) ]
+        , Html.td [] [ text (String.fromInt summary.losses) ]
         , Html.td [] [ text (String.fromInt summary.goals ++ ":" ++ String.fromInt summary.goalsAgainst) ]
+        , Html.td [] [ text ratioTxt ]
         , Html.td [] [ text ("(" ++ String.fromInt summary.matches ++ ")") ]
         ]
 
