@@ -4,6 +4,9 @@ module Main exposing (main)
 
 import Browser
 import Dict exposing (Dict)
+import Element exposing (Element)
+import Element.Background as Background
+import Element.Font as Font
 import Html exposing (Html, button, div, img, input, text)
 import Html.Attributes exposing (placeholder, src, style, type_, value)
 import Html.Events exposing (onClick, onInput)
@@ -391,8 +394,43 @@ subscriptions model =
 -- VIEW
 
 
+cBase02 =
+    Element.rgb255 7 54 66
+
+
+cBase0 =
+    Element.rgb255 131 148 150
+
+
+cBase1 =
+    Element.rgb255 147 161 161
+
+
 view : Model -> Html Msg
 view model =
+    let
+        body =
+            Element.html (viewHtml model)
+
+        site =
+            Element.column [] [ viewMenu, body ]
+    in
+    Element.layout [] site
+
+
+viewMenu : Element Msg
+viewMenu =
+    Element.el
+        [ Background.color cBase02
+        , Font.color cBase1
+        , Element.padding 10
+        , Element.width Element.fill
+        ]
+        (Element.text "Your menu could be here")
+
+
+viewHtml : Model -> Html Msg
+viewHtml model =
     let
         viewSel =
             viewSite model.selection
