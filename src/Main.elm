@@ -39,7 +39,7 @@ import Regex
 
 
 main =
-    Browser.element
+    Browser.document
         { init = init
         , update = update
         , subscriptions = subscriptions
@@ -406,16 +406,16 @@ cBase1 =
     Element.rgb255 147 161 161
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
     let
         body =
             Element.html (viewHtml model)
 
         site =
-            Element.column [] [ viewMenu, body ]
+            Element.column [ Element.width Element.fill ] [ viewMenu, body ]
     in
-    Element.layout [] site
+    Browser.Document "Bundesliga!" [ Element.layout [] site ]
 
 
 viewMenu : Element Msg
