@@ -638,13 +638,35 @@ viewTableRow idx summary =
         ratio =
             toFloat summary.goals / toFloat summary.goalsAgainst
 
-        -- TODO formatting
-        ratioTxt =
-            if summary.goals > summary.goalsAgainst then
-                String.fromFloat ratio ++ ":1"
+        ratioNorm =
+            if ratio >= 1 then
+                ratio
 
             else
-                "1:" ++ String.fromFloat (1.0 / ratio)
+                1 / ratio
+
+        ratioTrunc =
+            toFloat (truncate (ratioNorm * 100)) / 100.0
+
+        ratioStr =
+            String.fromFloat ratioTrunc
+
+        ratioPadded =
+            String.padRight 4
+                '0'
+                (if String.contains "." ratioStr then
+                    ratioStr
+
+                 else
+                    ratioStr ++ "."
+                )
+
+        ratioTxt =
+            if ratio >= 1 then
+                ratioPadded ++ ":1.00"
+
+            else
+                "1.00:" ++ ratioPadded
     in
     Html.tr []
         [ Html.td [] [ text (String.fromInt (idx + 1)) ]
