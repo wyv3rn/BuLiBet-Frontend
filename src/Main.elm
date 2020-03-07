@@ -3,6 +3,7 @@ module Main exposing (main)
 -- TODO do not clutter global namespace ...
 
 import Browser
+import Color as C
 import Dict exposing (Dict)
 import Element exposing (Element)
 import Element.Background as Background
@@ -394,18 +395,6 @@ subscriptions model =
 -- VIEW
 
 
-cBase02 =
-    Element.rgb255 7 54 66
-
-
-cBase0 =
-    Element.rgb255 131 148 150
-
-
-cBase1 =
-    Element.rgb255 147 161 161
-
-
 view : Model -> Browser.Document Msg
 view model =
     let
@@ -421,8 +410,8 @@ view model =
 viewMenu : Element Msg
 viewMenu =
     Element.el
-        [ Background.color cBase02
-        , Font.color cBase1
+        [ Background.color C.dark
+        , Font.color C.lighterGrey
         , Element.padding 10
         , Element.width Element.fill
         ]
