@@ -241,18 +241,25 @@ foldTeamResults result summary =
         summary
 
 
+extractMatchDay : Int -> List Match -> MatchDay
+extractMatchDay d matches =
+    List.filter (\m -> m.day == d) matches
+
+
+type DaySelection
+    = Bet
+    | Submit
+
+
 type Selection
-    = Day Int
+    = Day ( Int, MatchDay, DaySelection )
     | Table
 
 
 type FetchStatus
-    = Idle
-    | Fetching Selection
+    = Fetching
     | FetchFailed String
-    | FetchedDay MatchDay
-    | FetchedAll (List Match)
-    | Submitted MatchDay
+    | Fetched (List Match)
 
 
 type alias Model =
@@ -263,7 +270,13 @@ type alias Model =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Nothing Idle, Cmd.none )
+    ( Model Nothing Fetching
+    , Http.get
+        { url =
+            openligaUrl
+        , expect = Http.expectJson ReceivedMatches (list matchDecoder)
+        }
+    )
 
 
 
@@ -273,8 +286,7 @@ init _ =
 type Msg
     = DaySelected Int
     | TableSelected
-    | GotMatchDay (Result Http.Error MatchDay)
-    | GotAllMatches (Result Http.Error (List Match))
+    | ReceivedMatches (Result Http.Error (List Match))
     | MatchUp Int
     | UpdateBet Int TeamRole Int
     | SubmitBet
@@ -289,26 +301,27 @@ update msg model =
         TableSelected ->
             selectTable model
 
-        GotMatchDay result ->
+        ReceivedMatches result ->
             case result of
                 Ok matches ->
-                    ( { model | status = FetchedDay matches }, Cmd.none )
-
-                Err e ->
-                    ( Model Nothing (FetchFailed (fetchErrorMsg e)), Cmd.none )
-
-        GotAllMatches result ->
-            case result of
-                Ok matches ->
-                    ( { model | status = FetchedAll matches }, Cmd.none )
+                    ( { model | status = Fetched matches }, Cmd.none )
 
                 Err e ->
                     ( Model Nothing (FetchFailed (fetchErrorMsg e)), Cmd.none )
 
         MatchUp idx ->
-            case model.status of
-                FetchedDay matchDay ->
-                    ( { model | status = FetchedDay (moveMatchUp idx matchDay) }
+            case model.selection of
+                Just (Day ( d, matchDay, ds )) ->
+                    ( { model
+                        | selection =
+                            Just
+                                (Day
+                                    ( d
+                                    , moveMatchUp idx matchDay
+                                    , ds
+                                    )
+                                )
+                      }
                     , Cmd.none
                     )
 
@@ -316,11 +329,17 @@ update msg model =
                     ( model, Cmd.none )
 
         UpdateBet matchIdx role inc ->
-            case model.status of
-                FetchedDay matchDay ->
+            case model.selection of
+                Just (Day ( d, matchDay, ds )) ->
                     ( { model
-                        | status =
-                            FetchedDay (updateBet matchIdx role inc matchDay)
+                        | selection =
+                            Just
+                                (Day
+                                    ( d
+                                    , updateBet matchIdx role inc matchDay
+                                    , ds
+                                    )
+                                )
                       }
                     , Cmd.none
                     )
@@ -329,9 +348,20 @@ update msg model =
                     ( model, Cmd.none )
 
         SubmitBet ->
-            case model.status of
-                FetchedDay matchDay ->
-                    ( { model | status = Submitted matchDay }, Cmd.none )
+            case model.selection of
+                Just (Day ( d, matchDay, _ )) ->
+                    ( { model
+                        | selection =
+                            Just
+                                (Day
+                                    ( d
+                                    , matchDay
+                                    , Submit
+                                    )
+                                )
+                      }
+                    , Cmd.none
+                    )
 
                 _ ->
                     ( model, Cmd.none )
@@ -358,27 +388,29 @@ fetchErrorMsg e =
 
 selectDay : Model -> Int -> ( Model, Cmd Msg )
 selectDay model d =
-    let
-        day =
-            Day d
-    in
-    ( { model | selection = Just day, status = Fetching day }
-    , Http.get
-        { url =
-            openligaUrl
-                ++ String.fromInt d
-        , expect = Http.expectJson GotMatchDay (list matchDecoder)
-        }
-    )
+    case model.status of
+        Fetched matches ->
+            -- TODO allow switching from submit back to betting without loosing bets
+            ( { model
+                | selection =
+                    Just
+                        (Day
+                            ( d
+                            , extractMatchDay d matches
+                            , Bet
+                            )
+                        )
+              }
+            , Cmd.none
+            )
+
+        _ ->
+            ( model, Cmd.none )
 
 
 selectTable model =
-    ( { model | selection = Just Table, status = Fetching Table }
-    , Http.get
-        { url =
-            openligaUrl
-        , expect = Http.expectJson GotAllMatches (list matchDecoder)
-        }
+    ( { model | selection = Just Table }
+    , Cmd.none
     )
 
 
@@ -421,47 +453,42 @@ viewMenu =
 viewHtml : Model -> Html Msg
 viewHtml model =
     let
-        viewSel =
-            viewSite model.selection
+        content =
+            case model.status of
+                Fetching ->
+                    text "Fetching all matches for you ..."
+
+                FetchFailed reason ->
+                    div [ style "color" "red" ]
+                        [ text
+                            ("Fetching failed, reason: "
+                                ++ reason
+                            )
+                        ]
+
+                Fetched matches ->
+                    case model.selection of
+                        Nothing ->
+                            text "Select match day to bet or other actions below"
+
+                        Just (Day ( _, matchDay, ds )) ->
+                            case ds of
+                                Bet ->
+                                    viewMatchDay matchDay
+
+                                Submit ->
+                                    viewSubmittedMatchDay matchDay
+
+                        Just Table ->
+                            viewTable matches
+
+        buttons =
+            viewButtons model.selection
     in
-    case model.status of
-        Idle ->
-            viewSel (Html.text "Select a matchday or other action below.")
-
-        Fetching selection ->
-            case selection of
-                Day d ->
-                    viewSel (text ("Fetching day " ++ String.fromInt d ++ " ..."))
-
-                Table ->
-                    viewSel (text "Fetching all match days for generating table ...")
-
-        FetchFailed reason ->
-            viewSel
-                (div [ style "color" "red" ]
-                    [ text
-                        ("Fetching failed, reason: "
-                            ++ reason
-                        )
-                    ]
-                )
-
-        FetchedDay matchDay ->
-            viewSel (viewMatchDay matchDay)
-
-        Submitted matchDay ->
-            viewSel (viewSubmittedMatchDay matchDay)
-
-        FetchedAll matches ->
-            viewSel (viewTable matches)
-
-
-viewSite : Maybe Selection -> Html Msg -> Html Msg
-viewSite selection content =
     Html.div []
         [ Html.p [] [ content ]
         , Html.hr [] []
-        , Html.p [] [ viewButtons selection ]
+        , Html.p [] [ viewButtons model.selection ]
         ]
 
 
@@ -491,7 +518,7 @@ createButton selection label =
                 Nothing ->
                     "white"
 
-                Just (Day d) ->
+                Just (Day ( d, _, _ )) ->
                     if label == String.fromInt d then
                         selectedBg
 

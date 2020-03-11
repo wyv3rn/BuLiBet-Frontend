@@ -28,3 +28,9 @@ lightGrey =
 -}
 lighterGrey =
     rgb255 147 161 161
+
+
+{-| red
+-}
+red =
+    rgb255 220 50 47
