@@ -225,20 +225,15 @@ foldTeamResults result summary =
                 Loss ->
                     ( 0, ( 0, 0, 1 ) )
     in
-    -- TODO filter
-    if result.day >= 0 then
-        { summary
-            | matches = summary.matches + 1
-            , goals = summary.goals + result.goals
-            , goalsAgainst = summary.goalsAgainst + result.goalsAgainst
-            , points = summary.points + p
-            , wins = summary.wins + w
-            , ties = summary.ties + t
-            , losses = summary.losses + l
-        }
-
-    else
-        summary
+    { summary
+        | matches = summary.matches + 1
+        , goals = summary.goals + result.goals
+        , goalsAgainst = summary.goalsAgainst + result.goalsAgainst
+        , points = summary.points + p
+        , wins = summary.wins + w
+        , ties = summary.ties + t
+        , losses = summary.losses + l
+    }
 
 
 extractMatchDay : Int -> List Match -> MatchDay
@@ -453,43 +448,72 @@ viewMenu =
 viewHtml : Model -> Html Msg
 viewHtml model =
     let
-        content =
+        ( content, allMatches ) =
             case model.status of
                 Fetching ->
-                    text "Fetching all matches for you ..."
+                    ( text "Fetching all matches for you ...", Nothing )
 
                 FetchFailed reason ->
-                    div [ style "color" "red" ]
+                    ( div [ style "color" "red" ]
                         [ text
                             ("Fetching failed, reason: "
                                 ++ reason
                             )
                         ]
+                    , Nothing
+                    )
 
                 Fetched matches ->
                     case model.selection of
                         Nothing ->
-                            text "Select match day to bet or other actions below"
+                            ( text "Select match day to bet or other actions below"
+                            , Just matches
+                            )
 
                         Just (Day ( _, matchDay, ds )) ->
                             case ds of
                                 Bet ->
-                                    viewMatchDay matchDay
+                                    ( viewMatchDay matchDay, Just matches )
 
                                 Submit ->
-                                    viewSubmittedMatchDay matchDay
+                                    ( viewSubmittedMatchDay matchDay
+                                    , Just matches
+                                    )
 
                         Just Table ->
-                            viewTable matches
+                            ( viewTable matches, Nothing )
 
         buttons =
             viewButtons model.selection
+
+        upper =
+            [ Html.p [] [ content ]
+            , Html.hr [] []
+            , Html.p [] [ viewButtons model.selection ]
+            , Html.hr [] []
+            ]
+
+        elements =
+            case allMatches of
+                Nothing ->
+                    upper
+
+                Just ms ->
+                    let
+                        fms =
+                            List.filter (\m -> m.day >= 20) ms
+                    in
+                    upper
+                        ++ [ Html.table []
+                                [ Html.tr []
+                                    [ Html.td [] [ viewTable ms ]
+                                    , Html.td [] [ text "     " ]
+                                    , Html.td [] [ viewTable fms ]
+                                    ]
+                                ]
+                           ]
     in
-    Html.div []
-        [ Html.p [] [ content ]
-        , Html.hr [] []
-        , Html.p [] [ viewButtons model.selection ]
-        ]
+    Html.div [] elements
 
 
 viewButtons : Maybe Selection -> Html Msg
