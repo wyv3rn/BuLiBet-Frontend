@@ -501,7 +501,8 @@ viewHtml model =
                 Just ms ->
                     let
                         fms =
-                            List.filter (\m -> m.day >= 20) ms
+                            -- TODO dynamic filtering (e.g. last 5 matchdays)
+                            List.filter (\m -> m.day >= 27) ms
                     in
                     upper
                         ++ [ Html.table []
