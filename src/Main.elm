@@ -52,26 +52,6 @@ main =
 -- MODEL
 
 
-shortenTeamName : String -> String
-shortenTeamName name =
-    let
-        regex =
-            Maybe.withDefault
-                Regex.never
-                (Regex.fromString "[A-Z0-9\\.]{2,}")
-
-        replaced =
-            String.trim (Regex.replace regex (\_ -> "") name)
-    in
-    if replaced == "Union Berlin" then
-        "Union"
-    else if replaced == "" then
-        "HSV"
-
-    else
-        replaced
-
-
 type alias Team =
     { name : String
     , iconUrl : String
@@ -869,7 +849,7 @@ teamDecoder =
 
 teamNameDecoder : Decoder String
 teamNameDecoder =
-    map shortenTeamName (field "shortName" string)
+    field "shortName" string
 
 
 
