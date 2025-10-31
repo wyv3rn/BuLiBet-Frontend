@@ -65,6 +65,8 @@ shortenTeamName name =
     in
     if replaced == "Union Berlin" then
         "Union"
+    else if replaced == "" then
+        "HSV"
 
     else
         replaced
@@ -818,12 +820,12 @@ matchDecoder : Decoder Match
 matchDecoder =
     map6
         Match
-        (field "Group" (field "GroupOrderID" int))
-        (field "Team1" teamDecoder)
-        (field "Team2" teamDecoder)
+        (field "group" (field "groupOrderID" int))
+        (field "team1" teamDecoder)
+        (field "team2" teamDecoder)
         resultListDecoder
         (succeed Nothing)
-        (field "MatchIsFinished" bool)
+        (field "matchIsFinished" bool)
 
 
 scoreFromInts : Int -> Int -> Score
@@ -833,7 +835,7 @@ scoreFromInts a b =
 
 resultListDecoder : Decoder Score
 resultListDecoder =
-    field "MatchResults" (maybe (index 0 (field "ResultName" string)))
+    field "matchResults" (maybe (index 0 (field "resultName" string)))
         |> andThen scoreDecoder
 
 
@@ -843,8 +845,8 @@ scoreDecoder maybe =
         Just name ->
             if name == "Endergebnis" then
                 map2 scoreFromInts
-                    (teamScoreDecoder "PointsTeam1")
-                    (teamScoreDecoder "PointsTeam2")
+                    (teamScoreDecoder "pointsTeam1")
+                    (teamScoreDecoder "pointsTeam2")
 
             else
                 -- we got results, but not the final ones
@@ -857,17 +859,17 @@ scoreDecoder maybe =
 
 teamScoreDecoder : String -> Decoder Int
 teamScoreDecoder fieldName =
-    field "MatchResults" (index 0 (field fieldName int))
+    field "matchResults" (index 0 (field fieldName int))
 
 
 teamDecoder : Decoder Team
 teamDecoder =
-    map2 Team teamNameDecoder (field "TeamIconUrl" string)
+    map2 Team teamNameDecoder (field "teamIconUrl" string)
 
 
 teamNameDecoder : Decoder String
 teamNameDecoder =
-    map shortenTeamName (field "ShortName" string)
+    map shortenTeamName (field "shortName" string)
 
 
 
@@ -875,7 +877,7 @@ teamNameDecoder =
 
 
 openligaUrl =
-    "https://www.openligadb.de/api/getmatchdata/bl1/2019/"
+    "https://api.openligadb.de/getmatchdata/bl1/2025"
 
 
 type Alignment
