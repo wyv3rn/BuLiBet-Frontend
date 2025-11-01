@@ -484,7 +484,7 @@ viewHtml model =
                     let
                         fms =
                             -- TODO dynamic filtering (e.g. last 5 matchdays)
-                            List.filter (\m -> m.day >= 27) ms
+                            List.filter (\m -> m.day >= 1) ms
                     in
                     upper
                         ++ [ Html.table []
@@ -587,7 +587,6 @@ viewMatch idx match =
             ++ [ Html.td [] [ viewScore scoreColor match.score ] ]
             ++ viewTeam match.guest Guest
             ++ viewBet idx match.bet
-            ++ [ text ("Debug: Day " ++ String.fromInt match.day) ]
         )
 
 
@@ -815,7 +814,7 @@ scoreFromInts a b =
 
 resultListDecoder : Decoder Score
 resultListDecoder =
-    field "matchResults" (maybe (index 0 (field "resultName" string)))
+    field "matchResults" (maybe (index 1 (field "resultName" string)))
         |> andThen scoreDecoder
 
 
@@ -839,7 +838,7 @@ scoreDecoder maybe =
 
 teamScoreDecoder : String -> Decoder Int
 teamScoreDecoder fieldName =
-    field "matchResults" (index 0 (field fieldName int))
+    field "matchResults" (index 1 (field fieldName int))
 
 
 teamDecoder : Decoder Team
