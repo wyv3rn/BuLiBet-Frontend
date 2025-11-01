@@ -8,37 +8,32 @@ import Dict exposing (Dict)
 import Element exposing (Element)
 import Element.Background as Background
 import Element.Font as Font
-import Html exposing (Html, button, div, img, input, text)
-import Html.Attributes exposing (placeholder, src, style, type_, value)
-import Html.Events exposing (onClick, onInput)
+import Html exposing (Html, button, div, img, text)
+import Html.Attributes exposing (src, style)
+import Html.Events exposing (onClick)
 import Http
 import Json.Decode
     exposing
         ( Decoder
         , andThen
         , bool
-        , fail
         , field
         , index
         , int
         , list
-        , map
         , map2
-        , map3
-        , map4
-        , map5
         , map6
         , maybe
         , string
         , succeed
         )
-import Regex
 
 
 
 -- MAIN
 
 
+main : Program () Model Msg
 main =
     Browser.document
         { init = init
@@ -110,7 +105,7 @@ moveMatchUp idx matchDay =
     matchDay
         |> List.indexedMap Tuple.pair
         |> List.sortBy
-            (\( i, e ) ->
+            (\( i, _ ) ->
                 if i == idx then
                     toFloat i - 1.1
 
@@ -385,6 +380,7 @@ selectDay model d =
             ( model, Cmd.none )
 
 
+selectTable : Model -> ( Model, Cmd msg )
 selectTable model =
     ( { model | selection = Just Table }
     , Cmd.none
@@ -396,7 +392,7 @@ selectTable model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.none
 
 
@@ -468,7 +464,7 @@ viewHtml model =
                         Just Table ->
                             ( viewTable matches, Nothing, Nothing )
 
-        buttons =
+        _ =
             viewButtons model.selection
 
         upper =
@@ -592,10 +588,10 @@ viewMatch idx match =
                     "black"
     in
     Html.tr []
-        ([ viewUpBtn idx ]
-            ++ viewTeam match.home Home
-            ++ [ Html.td [] [ viewScore scoreColor match.score ] ]
-            ++ viewTeam match.guest Guest
+        (viewUpBtn idx
+            :: viewTeam match.home Home
+            ++ Html.td [] [ viewScore scoreColor match.score ]
+            :: viewTeam match.guest Guest
             ++ viewBet idx match.bet
         )
 
@@ -635,12 +631,11 @@ viewBet matchIdx bet =
     [ viewBetBtn matchIdx Home 2
     , viewBetBtn matchIdx Home 1
     , viewBetBtn matchIdx Home -1
+    , Html.td [] [ viewScore "black" bet ]
+    , viewBetBtn matchIdx Guest -1
+    , viewBetBtn matchIdx Guest 1
+    , viewBetBtn matchIdx Guest 2
     ]
-        ++ [ Html.td [] [ viewScore "black" bet ] ]
-        ++ [ viewBetBtn matchIdx Guest -1
-           , viewBetBtn matchIdx Guest 1
-           , viewBetBtn matchIdx Guest 2
-           ]
 
 
 viewBetBtn : Int -> TeamRole -> Int -> Html Msg
@@ -680,10 +675,10 @@ viewSubmittedMatch : Match -> Html Msg
 viewSubmittedMatch match =
     Html.tr []
         [ Html.div []
-            ([ text (match.home.name ++ " ") ]
-                ++ [ viewScoreDelim "" "black" match.bet ]
-                ++ [ text (" " ++ match.guest.name) ]
-            )
+            [ text (match.home.name ++ " ")
+            , viewScoreDelim "" "black" match.bet
+            , text (" " ++ match.guest.name)
+            ]
         ]
 
 
@@ -865,6 +860,7 @@ teamNameDecoder =
 -- HELPER
 
 
+openligaUrl : String
 openligaUrl =
     "https://api.openligadb.de/getmatchdata/bl1/2025"
 
