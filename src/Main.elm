@@ -456,7 +456,7 @@ viewHtml model =
                                     ( viewMatchDay matchDay, Just matches, Just day )
 
                                 Submit ->
-                                    ( viewSubmittedMatchDay matchDay
+                                    ( viewSubmittedMatchDay day matchDay
                                     , Just matches
                                     , Just day
                                     )
@@ -666,18 +666,21 @@ viewMatchDay matchDay =
         ]
 
 
-viewSubmittedMatchDay : MatchDay -> Html Msg
-viewSubmittedMatchDay matchDay =
-    Html.table [] (List.map viewSubmittedMatch matchDay)
+viewSubmittedMatchDay : Int -> MatchDay -> Html Msg
+viewSubmittedMatchDay day matchDay =
+    Html.div
+        []
+        [ text (String.fromInt day ++ ". Spieltag")
+        , Html.table [] (List.map viewSubmittedMatch matchDay)
+        ]
 
 
 viewSubmittedMatch : Match -> Html Msg
 viewSubmittedMatch match =
     Html.tr []
         [ Html.div []
-            [ text (match.home.name ++ " ")
+            [ text (match.home.name ++ " vs " ++ match.guest.name ++ ": ")
             , viewScoreDelim "" "black" match.bet
-            , text (" " ++ match.guest.name)
             ]
         ]
 
