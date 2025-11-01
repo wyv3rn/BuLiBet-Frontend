@@ -430,10 +430,10 @@ viewMenu =
 viewHtml : Model -> Html Msg
 viewHtml model =
     let
-        ( content, allMatches ) =
+        ( content, allMatches, dayIdx ) =
             case model.status of
                 Fetching ->
-                    ( text "Fetching all matches for you ...", Nothing )
+                    ( text "Fetching all matches for you ...", Nothing, Nothing )
 
                 FetchFailed reason ->
                     ( div [ style "color" "red" ]
@@ -443,6 +443,7 @@ viewHtml model =
                             )
                         ]
                     , Nothing
+                    , Nothing
                     )
 
                 Fetched matches ->
@@ -450,20 +451,22 @@ viewHtml model =
                         Nothing ->
                             ( text "Select match day to bet or other actions below"
                             , Just matches
+                            , Nothing
                             )
 
-                        Just (Day ( _, matchDay, ds )) ->
+                        Just (Day ( day, matchDay, ds )) ->
                             case ds of
                                 Bet ->
-                                    ( viewMatchDay matchDay, Just matches )
+                                    ( viewMatchDay matchDay, Just matches, Just day )
 
                                 Submit ->
                                     ( viewSubmittedMatchDay matchDay
                                     , Just matches
+                                    , Just day
                                     )
 
                         Just Table ->
-                            ( viewTable matches, Nothing )
+                            ( viewTable matches, Nothing, Nothing )
 
         buttons =
             viewButtons model.selection
@@ -482,9 +485,16 @@ viewHtml model =
 
                 Just ms ->
                     let
+                        startDay =
+                            case dayIdx of
+                                Nothing ->
+                                    1
+
+                                Just d ->
+                                    d - 5
+
                         fms =
-                            -- TODO dynamic filtering (e.g. last 5 matchdays)
-                            List.filter (\m -> m.day >= 1) ms
+                            List.filter (\m -> m.day >= startDay) ms
                     in
                     upper
                         ++ [ Html.table []
