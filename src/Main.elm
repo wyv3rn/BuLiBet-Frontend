@@ -464,9 +464,6 @@ viewHtml model =
                         Just Table ->
                             ( viewTable matches, Nothing, Nothing )
 
-        _ =
-            viewButtons model.selection
-
         upper =
             [ Html.p [] [ content ]
             , Html.hr [] []
